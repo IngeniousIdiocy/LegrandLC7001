@@ -1155,7 +1155,7 @@ const TOOL_DEFINITIONS = [
         },
         power: { type: 'boolean', description: 'Turn on (true) or off (false). Auto-set based on powerLevel if omitted.' },
         powerLevel: { type: 'number', description: 'Brightness 0-100. 0 = off, 1-100 = on at that level.' },
-        rampRate: { type: 'number', description: 'Transition speed 1-100 (100=instant)' },
+        rampRate: { type: 'number', description: 'Transition speed 1-100. Use 100 for instant (strobe/flash). Use 1-20 for slow fades. If omitted, dimmer uses slow default.' },
       },
       required: ['targets'],
     },
@@ -1318,43 +1318,67 @@ TOOL SELECTION:
 ZONE NAMES:
 Use EXACT names from the zone list below. Never abbreviate or guess.
 
+RAMP RATE (transition speed):
+The rampRate property controls how fast lights transition between brightness levels:
+- rampRate: 100 = INSTANT (required for strobe/flash effects!)
+- rampRate: 50-99 = fast transition
+- rampRate: 10-49 = visible fade
+- rampRate: 1-9 = slow, gradual fade
+If omitted, dimmers use their default (usually slow), which ruins strobe effects!
+
+URGENCY & MOOD INTERPRETATION:
+Detect tone in commands and choose appropriate rampRate:
+
+URGENT (use rampRate: 100 for instant response):
+- "right now", "immediately", "quick", "fast", "hurry", "now!", "asap"
+- "emergency", "alert", "panic", "intruder"
+- Commands with exclamation marks or ALL CAPS
+Example: "all lights right now" → {all: true}, power: true, powerLevel: 100, rampRate: 100
+
+RELAXED/AMBIENT (use rampRate: 5-20 for gentle transitions):
+- "set a mood", "cozy", "romantic", "relaxing", "calm", "peaceful"
+- "gently", "slowly", "ease into", "gradually", "softly"
+- "wind down", "bedtime", "evening mode", "dim for a movie"
+Example: "make it cozy in here" → power: true, powerLevel: 30-50, rampRate: 10
+
 WRITING SCRIPTS:
 Scripts run as background jobs. They have access to:
-- lights.set(targets, props) - control zones
+- lights.set(targets, props) - control zones (props: power, powerLevel, rampRate)
 - lights.sleep(ms) - pause execution  
 - lights.now() - current timestamp
 - lights.isAborted() - check if user stopped the job
 
 Common patterns:
 
-PULSE/STROBE (alternate on/off):
+STROBE/FLASH (must use rampRate: 100 for instant transitions!):
 const endTime = lights.now() + 60000; // 60 seconds
 while (lights.now() < endTime && !lights.isAborted()) {
-  await lights.set({zoneNames: ["Kitchen Main"]}, {powerLevel: 100});
+  await lights.set({zoneNames: ["Kitchen Main"]}, {powerLevel: 100, rampRate: 100});
   await lights.sleep(500);
-  await lights.set({zoneNames: ["Kitchen Main"]}, {powerLevel: 0});
+  await lights.set({zoneNames: ["Kitchen Main"]}, {powerLevel: 0, rampRate: 100});
   await lights.sleep(500);
 }
 
-BREATHE (smooth wave):
+BREATHE (smooth wave using rampRate for hardware-controlled fades):
 const endTime = lights.now() + 60000;
 while (lights.now() < endTime && !lights.isAborted()) {
-  for (let pct = 10; pct <= 100; pct += 5) {
-    await lights.set({zoneNames: ["Office"]}, {powerLevel: pct});
-    await lights.sleep(100);
-  }
-  for (let pct = 100; pct >= 10; pct -= 5) {
-    await lights.set({zoneNames: ["Office"]}, {powerLevel: pct});
-    await lights.sleep(100);
-  }
+  await lights.set({zoneNames: ["Office"]}, {powerLevel: 100, rampRate: 20});
+  await lights.sleep(2000); // wait for fade up
+  await lights.set({zoneNames: ["Office"]}, {powerLevel: 10, rampRate: 20});
+  await lights.sleep(2000); // wait for fade down
 }
 
-RAMP/FADE (gradual transition):
-const steps = 20;
+SLOW FADE (use low rampRate - hardware does the smooth transition):
+// Simple: just set target with slow rampRate, hardware fades smoothly
+await lights.set({zoneNames: ["Bedroom"]}, {powerLevel: 0, rampRate: 5});
+// Light will fade from current level to off over several seconds
+
+// For very long fades (e.g., 10 min bedtime), step down periodically:
+const steps = 10;
 for (let i = 0; i <= steps && !lights.isAborted(); i++) {
-  const level = Math.round(100 - (i / steps) * 100); // 100 down to 0
-  await lights.set({zoneNames: ["Bedroom"]}, {powerLevel: level});
-  await lights.sleep(30000 / steps); // 30 sec total
+  const level = Math.round(100 - (i / steps) * 100);
+  await lights.set({zoneNames: ["Bedroom"]}, {powerLevel: level, rampRate: 10});
+  await lights.sleep(60000); // 1 min between steps = 10 min total
 }
 
 RANDOM ZONES:

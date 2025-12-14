@@ -458,14 +458,28 @@ Inside scripts, you have access to:
 | `lights.now()` | Current timestamp in milliseconds |
 | `lights.isAborted()` | Check if user stopped the job |
 
-### Example: Pulse Effect
+### Understanding rampRate
+
+The `rampRate` property controls how fast dimmers transition between brightness levels:
+
+| rampRate | Effect | Use For |
+|----------|--------|---------|
+| **100** | Instant | Strobe, flash, alert effects |
+| **50-99** | Fast | Quick scene changes |
+| **10-49** | Visible fade | Mood transitions |
+| **1-9** | Slow fade | Wake-up, bedtime routines |
+
+⚠️ **Important**: If you omit `rampRate`, the dimmer uses its default (usually slow). This means strobe/flash effects will look like flickering because the light never reaches full brightness before the next command arrives!
+
+### Example: Strobe Effect
 
 ```javascript
 const endTime = lights.now() + 60000; // 60 seconds
 while (lights.now() < endTime && !lights.isAborted()) {
-  await lights.set({zoneNames: ["Kitchen Main"]}, {powerLevel: 100});
+  // rampRate: 100 = instant transition (required for strobe!)
+  await lights.set({zoneNames: ["Kitchen Main"]}, {powerLevel: 100, rampRate: 100});
   await lights.sleep(500);
-  await lights.set({zoneNames: ["Kitchen Main"]}, {powerLevel: 0});
+  await lights.set({zoneNames: ["Kitchen Main"]}, {powerLevel: 0, rampRate: 100});
   await lights.sleep(500);
 }
 ```
@@ -475,27 +489,26 @@ while (lights.now() < endTime && !lights.isAborted()) {
 ```javascript
 const endTime = lights.now() + 60000;
 while (lights.now() < endTime && !lights.isAborted()) {
-  // Fade up
-  for (let pct = 10; pct <= 100; pct += 5) {
-    await lights.set({zoneNames: ["Office First Floor"]}, {powerLevel: pct});
-    await lights.sleep(100);
-  }
-  // Fade down
-  for (let pct = 100; pct >= 10; pct -= 5) {
-    await lights.set({zoneNames: ["Office First Floor"]}, {powerLevel: pct});
-    await lights.sleep(100);
-  }
+  // rampRate: 20 = hardware does smooth fade over ~2 seconds
+  await lights.set({zoneNames: ["Office First Floor"]}, {powerLevel: 100, rampRate: 20});
+  await lights.sleep(2000); // wait for fade up
+  await lights.set({zoneNames: ["Office First Floor"]}, {powerLevel: 10, rampRate: 20});
+  await lights.sleep(2000); // wait for fade down
 }
 ```
 
 ### Example: Gradual Fade (Bedtime)
 
 ```javascript
-const steps = 20;
+// Simple: use slow rampRate and let hardware fade smoothly
+await lights.set({zoneNames: ["Master Main"]}, {powerLevel: 0, rampRate: 5});
+
+// Or for very long fades (e.g., 10 minutes), step down periodically:
+const steps = 10;
 for (let i = 0; i <= steps && !lights.isAborted(); i++) {
   const level = Math.round(100 - (i / steps) * 100);
-  await lights.set({zoneNames: ["Master Main"]}, {powerLevel: level});
-  await lights.sleep(30000 / steps); // 30 sec total
+  await lights.set({zoneNames: ["Master Main"]}, {powerLevel: level, rampRate: 10});
+  await lights.sleep(60000); // 1 min between steps = 10 min total
 }
 ```
 
@@ -509,6 +522,14 @@ Just ask Claude:
 > "Flash all the lights 5 times"
 
 Claude writes and executes the appropriate script automatically.
+
+**Tone Detection**: Claude interprets urgency and mood cues in your commands:
+- **Urgent** ("right now", "immediately", "quick!", "emergency") → instant `rampRate: 100`
+- **Relaxed** ("set a mood", "cozy", "romantic", "gently", "wind down") → gradual `rampRate: 5-20`
+
+Examples:
+- "All lights right now!" → All zones on at 100% with instant transition
+- "Make it cozy in the living room" → Dims to ~40% with a slow, gentle fade
 
 ### Via curl
 
