@@ -24,7 +24,7 @@ One server. Multiple access patterns. All your lights.
 
 ```
                                                         ┌─────────────────────┐
-                                                        │    ☁️ Claude API     │
+                                                        │    ☁️ Claude API    │
                                                         │ (api.anthropic.com) │
                                                         └──────────▲──────────┘
                                                                    │      
